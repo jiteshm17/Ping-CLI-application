@@ -158,8 +158,6 @@ func main() {
 	keyboardInterrupt := make(chan os.Signal, 1)
 	signal.Notify(keyboardInterrupt, os.Interrupt)
 
-	// timeout := make(chan time.Time)
-
 	ipaddr, err := net.ResolveIPAddr("ip", host)
 	if err != nil {
 		fmt.Println(err)
@@ -175,6 +173,17 @@ func main() {
 			}
 		}
 	}()
+
+	if deadline > -1 {
+		go func() {
+			for {
+				select {
+				case <-time.After(time.Duration(deadline) * time.Second):
+					showStats(host)
+				}
+			}
+		}()
+	}
 
 	for i := 0; i < count || count == -1; i++ {
 		ping(host, ipaddr, ttl, packetSize, quiet)
