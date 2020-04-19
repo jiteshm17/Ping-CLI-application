@@ -19,14 +19,18 @@ var pktsRcvd int
 var pktsSent int
 var sequence int
 var totalTime time.Duration
+var icmpType icmp.Type
 
-func ping(addr string, ttl int, packetSize int) {
-	var icmpType icmp.Type
+func showStats(host string) {
+	loss := float64(pktsSent-pktsRcvd) / float64(pktsSent) * 100
+	fmt.Printf("\n--- %v ping results ---\n", host)
+	fmt.Printf("\n%d packets transmitted, %d received, %.2f%% packet loss, time %dms\n",
+		pktsSent, pktsRcvd, loss, totalTime.Milliseconds())
 
-	ipaddr, err := net.ResolveIPAddr("ip", addr)
-	if err != nil {
-		fmt.Println(err)
-	}
+	os.Exit(0)
+}
+
+func ping(addr string, ipaddr *net.IPAddr, ttl int, packetSize int, quiet bool) {
 
 	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 
@@ -107,12 +111,14 @@ func ping(addr string, ttl int, packetSize int) {
 	case *icmp.Echo:
 		pktsRcvd++
 		loss := float64(pktsSent-pktsRcvd) / float64(pktsSent) * 100
-
-		fmt.Printf("\n%d bytes from %s: icmp_seq=%d time=%vms loss=%.2f%%",
-			n, ipaddr, sequence, duration.Milliseconds(), loss)
-
+		if !quiet {
+			fmt.Printf("\n%d bytes from %s: icmp_seq=%d time=%vms loss=%.2f%%",
+				n, ipaddr, sequence, duration.Milliseconds(), loss)
+		}
 	default:
-		fmt.Println("TTL Exceeded, Provided TTL is", ttl)
+		if !quiet {
+			fmt.Println("TTL Exceeded, Provided TTL is", ttl)
+		}
 	}
 }
 
@@ -126,12 +132,24 @@ func main() {
 	packetSize := 50
 	flag.IntVar(&packetSize, "size", 50, "Size of a packet (in bytes)")
 
+	quiet := false
+	flag.BoolVar(&quiet, "q", false, "Quiet output. Nothing is printed except start and finish summary lines")
+
+	count := -1
+	flag.IntVar(&count, "c", -1, "Stop after sending count ECHO_REQUEST packets")
+
+	interval := 1.0
+	flag.Float64Var(&interval, "i", 1, "Wait interval seconds between sending each packet")
+
+	deadline := -1
+	flag.IntVar(&deadline, "w", -1, "Specify a timeout, in seconds, before ping exits regardless of how many packets have been sent or received")
+
 	flag.Parse()
 
 	args := flag.Args()
 
 	if len(args) == 0 {
-		fmt.Println("No arguments have been provided... Using cloudflare as the default host")
+		fmt.Println("No host have been provided... Using cloudflare as the default host")
 
 	} else {
 		host = args[0]
@@ -140,19 +158,37 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt)
 
+	timeout := time.After(4 * time.Second)
+
+	ipaddr, err := net.ResolveIPAddr("ip", host)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println("Started pinging", host, "at IP address", ipaddr)
+
 	go func() {
 		<-sigs
-		loss := float64(pktsSent-pktsRcvd) / float64(pktsSent) * 100
-		fmt.Printf("\n--- %v ping results ---\n", host)
-		fmt.Printf("\n%d packets transmitted, %d received, %.2f%% packet loss, time %dms\n",
-			pktsSent, pktsRcvd, loss, totalTime.Milliseconds())
+		showStats(host)
 
-		os.Exit(0)
+		<-timeout
+		showStats(host)
+
 	}()
 
-	for {
-		ping(host, ttl, packetSize)
-		time.Sleep(1 * time.Second)
+	select {
+	case <-timeout:
+		showStats(host)
+
+	case <-sigs:
+		showStats(host)
+
+	default:
+		for i := 0; i < count || count == -1; i++ {
+			ping(host, ipaddr, ttl, packetSize, quiet)
+			time.Sleep(time.Duration(interval) * time.Second)
+		}
+		showStats(host)
 	}
 
 }
