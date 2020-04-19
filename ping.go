@@ -155,10 +155,10 @@ func main() {
 		host = args[0]
 	}
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt)
+	keyboardInterrupt := make(chan os.Signal, 1)
+	signal.Notify(keyboardInterrupt, os.Interrupt)
 
-	timeout := time.After(4 * time.Second)
+	// timeout := make(chan time.Time)
 
 	ipaddr, err := net.ResolveIPAddr("ip", host)
 	if err != nil {
@@ -168,27 +168,18 @@ func main() {
 	fmt.Println("Started pinging", host, "at IP address", ipaddr)
 
 	go func() {
-		<-sigs
-		showStats(host)
-
-		<-timeout
-		showStats(host)
-
+		for {
+			select {
+			case _ = <-keyboardInterrupt:
+				showStats(host)
+			}
+		}
 	}()
 
-	select {
-	case <-timeout:
-		showStats(host)
-
-	case <-sigs:
-		showStats(host)
-
-	default:
-		for i := 0; i < count || count == -1; i++ {
-			ping(host, ipaddr, ttl, packetSize, quiet)
-			time.Sleep(time.Duration(interval) * time.Second)
-		}
-		showStats(host)
+	for i := 0; i < count || count == -1; i++ {
+		ping(host, ipaddr, ttl, packetSize, quiet)
+		time.Sleep(time.Duration(interval) * time.Second)
 	}
+	showStats(host)
 
 }
