@@ -129,8 +129,8 @@ func main() {
 	ttl := 64
 	flag.IntVar(&ttl, "ttl", 64, "Number of hops before a packet dies")
 
-	packetSize := 50
-	flag.IntVar(&packetSize, "size", 50, "Size of a packet (in bytes)")
+	packetSize := 8
+	flag.IntVar(&packetSize, "s",8 , "Size of a packet (in bytes). Max is 70 bytes")
 
 	quiet := false
 	flag.BoolVar(&quiet, "q", false, "Quiet output. Nothing is printed except start and finish summary lines")
@@ -161,6 +161,7 @@ func main() {
 	ipaddr, err := net.ResolveIPAddr("ip", host)
 	if err != nil {
 		fmt.Println(err)
+		os.Exit(0)
 	}
 
 	fmt.Println("Started pinging", host, "at IP address", ipaddr)
